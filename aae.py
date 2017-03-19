@@ -22,7 +22,7 @@ def gaussian_noise_layer(input_layer, std):
 
 class AAE(object):
 
-    def __init__(self, hidden_size, batch_size, learning_rate):
+    def __init__(self, hidden_size, batch_size, learning_rate, log_dir):
         self.input_tensor = tf.placeholder(tf.float32, [None, 28 * 28])
         # add gaussian noise to the input
         input_with_noise = gaussian_noise_layer(self.input_tensor, 0.3)
@@ -52,10 +52,12 @@ class AAE(object):
             #define losses
             reconstruction_loss = tf.reduce_mean(tf.square(self.recons -
                     self.input_tensor)) #* 28 * 28 scale recons loss
-            classification_loss = losses.sigmoid_cross_entropy(pos_samples_pred,
-                    tf.ones(tf.shape(pos_samples_pred))) +\
-                    losses.sigmoid_cross_entropy(neg_samples_pred, tf.zeros(
-                    tf.shape(neg_samples_pred)))
+            classification_loss = tf.losses.sigmoid_cross_entropy(\
+                    tf.ones(tf.shape(pos_samples_pred)), pos_samples_pred) +\
+                    tf.losses.sigmoid_cross_entropy(tf.zeros(
+                    tf.shape(neg_samples_pred)), neg_samples_pred)
+            tf.summary.scalar('reconstruction_loss', reconstruction_loss)
+            tf.summary.scalar('classification_loss', classification_loss)
             # define references to params
             params = tf.trainable_variables()
             encoder_params = params[:encoder_params_num]
@@ -71,7 +73,8 @@ class AAE(object):
                 tf.ones(tf.shape(pos_samples_pred)))
             self.true_neg_rate = tf.reduce_mean(tf.cast(correct_pred_neg,
                 tf.float32))
-
+            tf.summary.scalar('true_pos_rate', self.true_pos_rate)
+            tf.summary.scalar('true_neg_rate', self.true_neg_rate)
             global_step = tf.contrib.framework.get_or_create_global_step()
             self.learn_rate = self._get_learn_rate(global_step, learning_rate)
             self.train_autoencoder = layers.optimize_loss(reconstruction_loss,
@@ -87,6 +90,9 @@ class AAE(object):
                     tf.train.MomentumOptimizer(lr, momentum=0.1), variables=
                     encoder_params, update_ops=[])
             self.sess = tf.Session()
+            self.merged = tf.summary.merge_all()
+            self.train_writer = tf.summary.FileWriter(log_dir,
+                                      self.sess.graph)
             self.sess.run(tf.global_variables_initializer())
     #use the learn rate schedule introduced by the original paper
     def _get_learn_rate(self, global_step, learning_rate):
@@ -99,8 +105,8 @@ class AAE(object):
                 {self.input_tensor: inputs})
         classify_loss_value = self.sess.run(self.train_discriminator,
                 {self.input_tensor: inputs})
-        _ = self.sess.run(self.train_encoder, {self.input_tensor: inputs})
-        return recons_loss_value, classify_loss_value
+        summary, _ = self.sess.run([self.merged, self.train_encoder], {self.input_tensor: inputs})
+        return recons_loss_value, classify_loss_value, summary
 
     def encode_features(self, inputs):
         return self.sess.run(self.true_latent_representation,

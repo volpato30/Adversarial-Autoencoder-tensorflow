@@ -26,6 +26,7 @@ flags.DEFINE_integer("updates_per_epoch", 300, "number of updates per epoch")
 flags.DEFINE_integer("max_epoch", 5000, "max epoch")
 flags.DEFINE_float("learning_rate", 1e-1, "learning rate")
 flags.DEFINE_string("working_directory", "./", "wd")
+flags.DEFINE_string("log_directory", "./log", "wd")
 flags.DEFINE_integer("hidden_size", 2, "size of the hidden unit")
 
 FLAGS = flags.FLAGS
@@ -35,17 +36,20 @@ if __name__ == "__main__":
     if not os.path.exists(data_directory):
         os.makedirs(data_directory)
     mnist = input_data.read_data_sets(data_directory, one_hot=False)
-
-    model = AAE(FLAGS.hidden_size, FLAGS.batch_size, FLAGS.learning_rate)
+    model = AAE(FLAGS.hidden_size, FLAGS.batch_size, FLAGS.learning_rate,
+            FLAGS.log_directory)
     for epoch in range(FLAGS.max_epoch):
         recons_loss_train, classify_loss_train = 0., 0.
 
         for i in range(FLAGS.updates_per_epoch):
             images, _ = mnist.train.next_batch(FLAGS.batch_size)
-            recons_loss_value, classify_loss_value = model.update_params(images)
+            recons_loss_value, classify_loss_value, summary = \
+                    model.update_params(images)
             recons_loss_train += recons_loss_value
             classify_loss_train += classify_loss_value
-
+        # write summary
+        if epoch % 10 == 9:
+            model.train_writer.add_summary(summary, epoch)
         recons_loss_train = recons_loss_train / \
             (FLAGS.updates_per_epoch * FLAGS.batch_size)
         classify_loss_train = classify_loss_train / \
